@@ -1,0 +1,88 @@
+name: pk3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "game/**"
+      - "progs/**"
+      - "game.pk3"
+      - "progs.pk3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pk3
+  cancel-in-progress: false
+
+env:
+  PK3_DIR: .
+  UPSTREAM_REPO: nzp-team/nzp-team.github.io
+  UPSTREAM_PATH: nzp
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for missing pk3 files
+        id: missing
+        run: |
+          missing=false
+          for name in game progs; do
+            if [ ! -f "$PK3_DIR/$name.pk3" ]; then missing=true; fi
+          done
+          echo "value=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch upstream
+        if: steps.missing.outputs.value == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          path: upstream
+          sparse-checkout: ${{ env.UPSTREAM_PATH }}
+          sparse-checkout-cone-mode: true
+          lfs: true
+
+      - name: Copy missing pk3 files
+        if: steps.missing.outputs.value == 'true'
+        run: |
+          mkdir -p "$PK3_DIR"
+          for name in game progs; do
+            if [ ! -f "$PK3_DIR/$name.pk3" ]; then
+              cp "upstream/$UPSTREAM_PATH/$name.pk3" "$PK3_DIR/$name.pk3"
+            fi
+          done
+          rm -rf upstream
+
+      - name: Unpack missing folders
+        run: |
+          for name in game progs; do
+            if [ -f "$PK3_DIR/$name.pk3" ] && [ ! -d "$PK3_DIR/$name" ]; then
+              mkdir -p "$PK3_DIR/$name"
+              unzip -q "$PK3_DIR/$name.pk3" -d "$PK3_DIR/$name"
+            fi
+          done
+
+      - name: Repack
+        run: |
+          for name in game progs; do
+            if [ -d "$PK3_DIR/$name" ]; then
+              rm -f "$PK3_DIR/$name.pk3"
+              abs="$(cd "$PK3_DIR" && pwd)"
+              (cd "$PK3_DIR/$name" && zip -r -X -9 -q "$abs/$name.pk3" .)
+            fi
+          done
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "pack pk3 [skip ci]"
+            git push
+          fi
