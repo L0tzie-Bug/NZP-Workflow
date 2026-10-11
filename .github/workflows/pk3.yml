@@ -2,12 +2,7 @@ name: pk3
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "game/**"
-      - "progs/**"
-      - "game.pk3"
-      - "progs.pk3"
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
