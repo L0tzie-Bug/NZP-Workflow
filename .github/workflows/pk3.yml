@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PK3_DIR: .
+  PK3_DIR: nzp
   UPSTREAM_REPO: nzp-team/nzp-team.github.io
   UPSTREAM_PATH: nzp
 
@@ -23,12 +23,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clear misplaced root files
+        run: |
+          if [ "$PK3_DIR" != "." ]; then
+            rm -rf ./game ./progs ./game.pk3 ./progs.pk3
+          fi
+
       - name: Check for missing pk3 files
         id: missing
         run: |
           missing=false
           for name in game progs; do
-            if [ ! -f "$PK3_DIR/$name.pk3" ]; then missing=true; fi
+            if [ ! -f "$PK3_DIR/$name.pk3" ] && [ ! -d "$PK3_DIR/$name" ]; then missing=true; fi
           done
           echo "value=$missing" >> "$GITHUB_OUTPUT"
 
@@ -47,7 +53,7 @@ jobs:
         run: |
           mkdir -p "$PK3_DIR"
           for name in game progs; do
-            if [ ! -f "$PK3_DIR/$name.pk3" ]; then
+            if [ ! -f "$PK3_DIR/$name.pk3" ] && [ ! -d "$PK3_DIR/$name" ]; then
               cp "upstream/$UPSTREAM_PATH/$name.pk3" "$PK3_DIR/$name.pk3"
             fi
           done
@@ -64,11 +70,15 @@ jobs:
 
       - name: Repack
         run: |
+          abs="$(cd "$PK3_DIR" && pwd)"
           for name in game progs; do
             if [ -d "$PK3_DIR/$name" ]; then
-              rm -f "$PK3_DIR/$name.pk3"
-              abs="$(cd "$PK3_DIR" && pwd)"
-              (cd "$PK3_DIR/$name" && zip -r -X -9 -q "$abs/$name.pk3" .)
+              rm -f "$abs/$name.pk3"
+              (
+                cd "$PK3_DIR/$name"
+                find . -type f -exec touch -d "2000-01-01 00:00:00" {} +
+                find . -type f | sed 's|^\./||' | LC_ALL=C sort | zip -X -9 -q "$abs/$name.pk3" -@
+              )
             fi
           done
 
